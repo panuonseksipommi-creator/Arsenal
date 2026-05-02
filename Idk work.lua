@@ -1,213 +1,248 @@
-- Arsenal Hub v5.4 - Criminology GUI | Combined Aimbot
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Camera = workspace.CurrentCamera
 local LocalPlayer = Players.LocalPlayer
 
 -- Settings
-local silentAimEnabled = false
-local useMobileSilent = false
 local aimbotEnabled = false
-local usePredictionSilent = true
-local usePredictionAimbot = false
+local usePredictionAimbot = true
 local autoPredictionEnabled = true
-
 local espEnabled = true
 local highlightEnabled = false
 local wallCheck = true
 local teamCheck = true
-
-local aimSmoothness = 0.15   -- Now controlled by slider
+local aimSmoothness = 0.18
 local aimFOV = 720
-local silentAimFOV = 720
-local autoPredMultiplier = 0.00145
+local autoPredMultiplier = 0.0016
 
 local targetCache = nil
+local espObjects = {}
 
--- FOV Circles
+-- FOV Circle
 local fovAim = Drawing.new("Circle")
-fovAim.Thickness = 2; fovAim.Color = Color3.fromRGB(0, 255, 140); fovAim.Transparency = 0.65; fovAim.Filled = false; fovAim.Visible = false
+fovAim.Thickness = 2
+fovAim.Color = Color3.fromRGB(0, 255, 140)
+fovAim.Transparency = 0.65
+fovAim.Filled = false
+fovAim.Visible = false
 
-local fovSilent = Drawing.new("Circle")
-fovSilent.Thickness = 2; fovSilent.Color = Color3.fromRGB(255, 50, 50); fovSilent.Transparency = 0.65; fovSilent.Filled = false; fovSilent.Visible = false
+-- ==================== ESP ====================
+local function createESP(plr)
+    if espObjects[plr] then return end
+    local box = Drawing.new("Square")
+    box.Thickness = 2
+    box.Color = Color3.fromRGB(0, 255, 140)
+    box.Transparency = 1
+    box.Filled = false
+    box.Visible = false
 
--- Criminology GUI
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.ResetOnSpawn = false
-ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+    local name = Drawing.new("Text")
+    name.Text = plr.Name
+    name.Size = 15
+    name.Color = Color3.fromRGB(255, 255, 255)
+    name.Outline = true
+    name.Center = true
+    name.Visible = false
 
-local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 320, 0, 680)
-MainFrame.Position = UDim2.new(0.5, -160, 0.5, -340)
-MainFrame.BackgroundColor3 = Color3.fromRGB(13, 13, 23)
-MainFrame.Active = true
-MainFrame.Draggable = true
-MainFrame.Visible = false
-MainFrame.Parent = ScreenGui
-
-local TopBar = Instance.new("Frame")
-TopBar.Size = UDim2.new(1,0,0,55)
-TopBar.BackgroundColor3 = Color3.fromRGB(20,20,35)
-TopBar.Parent = MainFrame
-
-local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1,-60,1,0)
-Title.BackgroundTransparency = 1
-Title.Text = "CRIMINOLOGY | ARSENAL"
-Title.TextColor3 = Color3.fromRGB(100,200,255)
-Title.TextScaled = true
-Title.Font = Enum.Font.GothamBold
-Title.Parent = TopBar
-
-local CloseBtn = Instance.new("TextButton")
-CloseBtn.Size = UDim2.new(0,40,0,40)
-CloseBtn.Position = UDim2.new(1,-45,0.5,-20)
-CloseBtn.BackgroundColor3 = Color3.fromRGB(200,60,60)
-CloseBtn.Text = "✕"
-CloseBtn.TextColor3 = Color3.new(1,1,1)
-CloseBtn.TextScaled = true
-CloseBtn.Parent = TopBar
-
-local Content = Instance.new("ScrollingFrame")
-Content.Size = UDim2.new(1,-20,1,-75)
-Content.Position = UDim2.new(0,10,0,65)
-Content.BackgroundTransparency = 1
-Content.ScrollBarThickness = 6
-Content.CanvasSize = UDim2.new(0,0,0,920)
-Content.Parent = MainFrame
-
-local UIList = Instance.new("UIListLayout")
-UIList.SortOrder = Enum.SortOrder.LayoutOrder
-UIList.Padding = UDim.new(0,8)
-UIList.Parent = Content
-
-local function AddSection(text)
-    local s = Instance.new("TextLabel")
-    s.Size = UDim2.new(1,0,0,32)
-    s.BackgroundTransparency = 1
-    s.Text = "  "..text
-    s.TextColor3 = Color3.fromRGB(120,190,255)
-    s.TextScaled = true
-    s.Font = Enum.Font.GothamBold
-    s.TextXAlignment = Enum.TextXAlignment.Left
-    s.Parent = Content
+    espObjects[plr] = {box = box, name = name}
 end
 
-local function AddToggle(name, default, callback)
-    local f = Instance.new("Frame")
-    f.Size = UDim2.new(1,0,0,48)
-    f.BackgroundColor3 = Color3.fromRGB(22,22,35)
-    f.Parent = Content
+local function updateESP()
+    if not espEnabled then
+        for _, v in pairs(espObjects) do
+            v.box.Visible = false
+            v.name.Visible = false
+        end
+        return
+    end
 
-    local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(0.65,0,1,0)
-    lbl.BackgroundTransparency = 1
-    lbl.Text = name
-    lbl.TextColor3 = Color3.new(1,1,1)
-    lbl.TextXAlignment = Enum.TextXAlignment.Left
-    lbl.Font = Enum.Font.Gotham
-    lbl.TextScaled = true
-    lbl.Parent = f
+    for plr, drawings in pairs(espObjects) do
+        if plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") and plr.Character:FindFirstChild("Head") then
+            if teamCheck and plr.Team == LocalPlayer.Team then
+                drawings.box.Visible = false
+                drawings.name.Visible = false
+                continue
+            end
 
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0,95,0,34)
-    btn.Position = UDim2.new(1,-110,0.5,-17)
-    btn.BackgroundColor3 = default and Color3.fromRGB(0,200,100) or Color3.fromRGB(200,50,50)
-    btn.Text = default and "ENABLED" or "DISABLED"
-    btn.TextColor3 = Color3.new(1,1,1)
-    btn.TextScaled = true
-    btn.Parent = f
+            local root = plr.Character.HumanoidRootPart
+            local head = plr.Character.Head
+            local pos, onScreen = Camera:WorldToViewportPoint(root.Position)
 
-    local state = default
-    btn.MouseButton1Click:Connect(function()
-        state = not state
-        btn.BackgroundColor3 = state and Color3.fromRGB(0,200,100) or Color3.fromRGB(200,50,50)
-        btn.Text = state and "ENABLED" or "DISABLED"
-        callback(state)
-    end)
+            if onScreen then
+                local top = Camera:WorldToViewportPoint(head.Position + Vector3.new(0,2,0))
+                local bottom = Camera:WorldToViewportPoint(root.Position - Vector3.new(0,3,0))
+
+                local height = bottom.Y - top.Y
+                local width = height * 0.6
+
+                drawings.box.Size = Vector2.new(width, height)
+                drawings.box.Position = Vector2.new(top.X - width/2, top.Y)
+                drawings.box.Visible = true
+
+                drawings.name.Position = Vector2.new(top.X, top.Y - 18)
+                drawings.name.Visible = true
+            else
+                drawings.box.Visible = false
+                drawings.name.Visible = false
+            end
+        else
+            drawings.box.Visible = false
+            drawings.name.Visible = false
+        end
+    end
 end
 
-local function AddSlider(name, default, min, max, callback)
-    local f = Instance.new("Frame")
-    f.Size = UDim2.new(1,0,0,65)
-    f.BackgroundColor3 = Color3.fromRGB(22,22,35)
-    f.Parent = Content
-
-    local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(1,0,0,24)
-    lbl.BackgroundTransparency = 1
-    lbl.Text = name .. ": " .. string.format("%.3f", default)
-    lbl.TextColor3 = Color3.new(1,1,1)
-    lbl.TextScaled = true
-    lbl.Font = Enum.Font.Gotham
-    lbl.Parent = f
-
-    local bar = Instance.new("TextButton")
-    bar.Size = UDim2.new(1,-20,0,20)
-    bar.Position = UDim2.new(0,10,0,35)
-    bar.BackgroundColor3 = Color3.fromRGB(40,40,60)
-    bar.Text = ""
-    bar.Parent = f
-
-    local fill = Instance.new("Frame")
-    fill.Size = UDim2.new((default-min)/(max-min),0,1,0)
-    fill.BackgroundColor3 = Color3.fromRGB(80,180,255)
-    fill.Parent = bar
-
-    local val = default
-    bar.MouseButton1Down:Connect(function()
-        local conn = RunService.RenderStepped:Connect(function()
-            local percent = math.clamp((game:GetService("UserInputService"):GetMouseLocation().X - bar.AbsolutePosition.X) / bar.AbsoluteSize.X, 0, 1)
-            val = min + (max - min) * percent
-            fill.Size = UDim2.new(percent, 0, 1, 0)
-            lbl.Text = name .. ": " .. string.format("%.3f", val)
-            callback(val)
-        end)
-        game:GetService("UserInputService").InputEnded:Connect(function(i)
-            if i.UserInputType == Enum.UserInputType.MouseButton1 then conn:Disconnect() end
-        end)
-    end)
+-- Highlight ESP
+local function updateHighlight()
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer and plr.Character then
+            local highlight = plr.Character:FindFirstChild("Highlight")
+            if highlightEnabled then
+                if not highlight then
+                    highlight = Instance.new("Highlight")
+                    highlight.Name = "Highlight"
+                    highlight.FillColor = Color3.fromRGB(0, 255, 140)
+                    highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+                    highlight.FillTransparency = 0.5
+                    highlight.OutlineTransparency = 0
+                    highlight.Parent = plr.Character
+                end
+                if teamCheck and plr.Team == LocalPlayer.Team then
+                    highlight.Enabled = false
+                else
+                    highlight.Enabled = true
+                end
+            elseif highlight then
+                highlight:Destroy()
+            end
+        end
+    end
 end
 
--- GUI
-AddSection("AIMBOT")
-AddToggle("Silent Aim (PC)", false, function(v) silentAimEnabled = v end)
-AddToggle("Silent Aim (Mobile)", false, function(v) useMobileSilent = v end)
-AddToggle("Aimbot", false, function(v) aimbotEnabled = v end)   -- Combined
+-- Create ESP for existing players
+for _, plr in ipairs(Players:GetPlayers()) do
+    if plr ~= LocalPlayer then createESP(plr) end
+end
+Players.PlayerAdded:Connect(createESP)
 
-AddSection("PREDICTION")
-AddToggle("Prediction for Silent Aim", true, function(v) usePredictionSilent = v end)
-AddToggle("Prediction for Aimbot", false, function(v) usePredictionAimbot = v end)
+-- ==================== RAYFIELD UI ====================
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
-AddSection("AIMBOT SETTINGS")
-AddSlider("Aimbot Strength", aimSmoothness, 0.05, 0.85, function(v) aimSmoothness = v end)
+local Window = Rayfield:CreateWindow({
+    Name = "Limppa Hub | Arsenal",
+    LoadingTitle = "Limppa Hub",
+    LoadingSubtitle = "by ZenLimppa",
+    ConfigurationSaving = {
+        Enabled = false,
+    },
+})
 
-AddSection("VISUALS")
-AddToggle("Drawing ESP", true, function(v) espEnabled = v end)
-AddToggle("Highlight ESP", false, function(v) highlightEnabled = v end)
+local MainTab = Window:CreateTab("Main", 4483362458)
 
-AddSection("SETTINGS")
-AddToggle("Wall Check", true, function(v) wallCheck = v end)
-AddToggle("Team Check", true, function(v) teamCheck = v end)
+-- Aimbot Section
+MainTab:CreateSection("Aimbot")
 
-AddSlider("Aim FOV", aimFOV, 200, 1500, function(v) aimFOV = v; fovAim.Radius = v end)
-AddSlider("Silent FOV", silentAimFOV, 200, 1500, function(v) silentAimFOV = v; fovSilent.Radius = v end)
-AddSlider("Prediction Multiplier", autoPredMultiplier, 0.0008, 0.003, function(v) autoPredMultiplier = v end)
+MainTab:CreateToggle({
+    Name = "Aimbot",
+    CurrentValue = false,
+    Flag = "AimbotToggle",
+    Callback = function(Value)
+        aimbotEnabled = Value
+    end,
+})
 
--- Open Button
-local OpenButton = Instance.new("TextButton")
-OpenButton.Size = UDim2.new(0,70,0,70)
-OpenButton.Position = UDim2.new(0,25,0.8,-110)
-OpenButton.BackgroundColor3 = Color3.fromRGB(25,90,230)
-OpenButton.Text = "⚙"
-OpenButton.TextScaled = true
-OpenButton.Font = Enum.Font.GothamBold
-OpenButton.Parent = ScreenGui
+MainTab:CreateToggle({
+    Name = "Prediction",
+    CurrentValue = true,
+    Flag = "PredictionToggle",
+    Callback = function(Value)
+        usePredictionAimbot = Value
+    end,
+})
 
-OpenButton.MouseButton1Click:Connect(function() MainFrame.Visible = not MainFrame.Visible end)
-CloseBtn.MouseButton1Click:Connect(function() MainFrame.Visible = false end)
+-- Aimbot Settings
+MainTab:CreateSection("Aimbot Settings")
 
--- Core Functions
+MainTab:CreateSlider({
+    Name = "Aimbot Strength",
+    Range = {0.05, 0.85},
+    Increment = 0.01,
+    CurrentValue = aimSmoothness,
+    Flag = "SmoothnessSlider",
+    Callback = function(Value)
+        aimSmoothness = Value
+    end,
+})
+
+MainTab:CreateSlider({
+    Name = "Aim FOV",
+    Range = {200, 1500},
+    Increment = 10,
+    CurrentValue = aimFOV,
+    Flag = "FOVSlider",
+    Callback = function(Value)
+        aimFOV = Value
+        fovAim.Radius = Value
+    end,
+})
+
+-- Prediction Settings
+MainTab:CreateSection("Prediction")
+
+MainTab:CreateSlider({
+    Name = "Prediction Multiplier",
+    Range = {0.0008, 0.003},
+    Increment = 0.0001,
+    CurrentValue = autoPredMultiplier,
+    Flag = "PredMultiplier",
+    Callback = function(Value)
+        autoPredMultiplier = Value
+    end,
+})
+
+-- Visuals Section
+MainTab:CreateSection("Visuals")
+
+MainTab:CreateToggle({
+    Name = "Drawing ESP",
+    CurrentValue = true,
+    Flag = "ESPToggle",
+    Callback = function(Value)
+        espEnabled = Value
+    end,
+})
+
+MainTab:CreateToggle({
+    Name = "Highlight ESP",
+    CurrentValue = false,
+    Flag = "HighlightToggle",
+    Callback = function(Value)
+        highlightEnabled = Value
+    end,
+})
+
+-- Settings Section
+MainTab:CreateSection("Settings")
+
+MainTab:CreateToggle({
+    Name = "Wall Check",
+    CurrentValue = true,
+    Flag = "WallCheck",
+    Callback = function(Value)
+        wallCheck = Value
+    end,
+})
+
+MainTab:CreateToggle({
+    Name = "Team Check",
+    CurrentValue = true,
+    Flag = "TeamCheck",
+    Callback = function(Value)
+        teamCheck = Value
+    end,
+})
+
+-- ==================== FUNCTIONS ====================
 local function isEnemy(plr)
     if not teamCheck then return true end
     if not plr.Team or not LocalPlayer.Team then return true end
@@ -223,13 +258,11 @@ local function isVisible(part)
     return res and res.Instance:IsDescendantOf(part.Parent)
 end
 
-local function getPrediction(part, root, forAimbot)
-    if (forAimbot and not usePredictionAimbot) or (not forAimbot and not usePredictionSilent) then
-        return 0
-    end
+local function getPrediction(part, root)
+    if not usePredictionAimbot then return 0 end
     local dist = (Camera.CFrame.Position - part.Position).Magnitude
     if autoPredictionEnabled and root then
-        return dist * autoPredMultiplier + (root.Velocity.Magnitude * 0.00008)
+        return dist * autoPredMultiplier + (root.Velocity.Magnitude * 0.0001)
     end
     return 0
 end
@@ -237,18 +270,18 @@ end
 local function updateTargetCache()
     local closest, minDist = nil, math.huge
     local center = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
-    local maxFov = math.max(aimFOV, silentAimFOV)
 
     for _, plr in ipairs(Players:GetPlayers()) do
         if plr ~= LocalPlayer and plr.Character and isEnemy(plr) then
             local char = plr.Character
             local part = char:FindFirstChild("Head") or char:FindFirstChild("UpperTorso") or char:FindFirstChild("HumanoidRootPart")
             local root = char:FindFirstChild("HumanoidRootPart")
+
             if part and isVisible(part) then
                 local vp, onScreen = Camera:WorldToViewportPoint(part.Position)
                 if onScreen then
                     local dist = (Vector2.new(vp.X, vp.Y) - center).Magnitude
-                    if dist < minDist and dist < maxFov then
+                    if dist < minDist and dist < aimFOV then
                         minDist = dist
                         closest = {Part = part, Root = root}
                     end
@@ -259,58 +292,32 @@ local function updateTargetCache()
     targetCache = closest
 end
 
--- Silent Aim Hook
-local mt = getrawmetatable(game)
-local old = mt.__namecall
-setreadonly(mt, false)
-mt.__namecall = newcclosure(function(self, ...)
-    local args = {...}
-    if silentAimEnabled and not useMobileSilent and getnamecallmethod() == "FireServer" then
-        local n = self.Name:lower()
-        if n:find("bullet") or n:find("hit") or n:find("damage") then
-            if targetCache and targetCache.Part then
-                local pos = targetCache.Part.Position
-                local pred = getPrediction(targetCache.Part, targetCache.Root, false)
-                if targetCache.Root then pos += targetCache.Root.Velocity * pred end
-                if typeof(args[1]) == "Vector3" then args[1] = pos + Vector3.new(0,0.12,0) end
-            end
-        end
-    end
-    return old(self, unpack(args))
-end)
-setreadonly(mt, true)
-
--- Main Loop
+-- ==================== MAIN LOOP ====================
 RunService.RenderStepped:Connect(function()
-    -- Mobile Silent
-    if useMobileSilent and silentAimEnabled and targetCache then
-        local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildWhichIsA("Tool")
-        local muzzle = tool and (tool:FindFirstChild("Muzzle") or tool:FindFirstChild("Barrel"))
-        if muzzle then
-            local pos = targetCache.Part.Position
-            local pred = getPrediction(targetCache.Part, targetCache.Root, false)
-            if targetCache.Root then pos += targetCache.Root.Velocity * pred end
-            muzzle.CFrame = CFrame.lookAt(muzzle.Position, pos)
-        end
-    end
-
-    -- Aimbot
     if aimbotEnabled and targetCache then
         local pos = targetCache.Part.Position
-        local pred = getPrediction(targetCache.Part, targetCache.Root, true)
-        if targetCache.Root then pos += targetCache.Root.Velocity * pred end
-        
+        local pred = getPrediction(targetCache.Part, targetCache.Root)
+        if targetCache.Root then 
+            pos += targetCache.Root.Velocity * pred 
+        end
+
         local targetCF = CFrame.lookAt(Camera.CFrame.Position, pos)
         Camera.CFrame = Camera.CFrame:Lerp(targetCF, aimSmoothness)
     end
 
-    local c = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
-    fovAim.Position = c
-    fovSilent.Position = c
+    fovAim.Position = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
     fovAim.Visible = aimbotEnabled
-    fovSilent.Visible = silentAimEnabled
+    fovAim.Radius = aimFOV
+
+    updateESP()
+    updateHighlight()
 end)
 
 RunService.Heartbeat:Connect(updateTargetCache)
 
-print("✅ Arsenal Hub v5.4 Loaded | Aimbot Combined & Fixed")
+Rayfield:Notify({
+    Title = "Limppa Hub",
+    Content = "Successfully loaded by ZenLimppa",
+    Duration = 6,
+    Image = 4483362458,
+})
