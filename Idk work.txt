@@ -1,0 +1,316 @@
+- Arsenal Hub v5.4 - Criminology GUI | Combined Aimbot
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Camera = workspace.CurrentCamera
+local LocalPlayer = Players.LocalPlayer
+
+-- Settings
+local silentAimEnabled = false
+local useMobileSilent = false
+local aimbotEnabled = false
+local usePredictionSilent = true
+local usePredictionAimbot = false
+local autoPredictionEnabled = true
+
+local espEnabled = true
+local highlightEnabled = false
+local wallCheck = true
+local teamCheck = true
+
+local aimSmoothness = 0.15   -- Now controlled by slider
+local aimFOV = 720
+local silentAimFOV = 720
+local autoPredMultiplier = 0.00145
+
+local targetCache = nil
+
+-- FOV Circles
+local fovAim = Drawing.new("Circle")
+fovAim.Thickness = 2; fovAim.Color = Color3.fromRGB(0, 255, 140); fovAim.Transparency = 0.65; fovAim.Filled = false; fovAim.Visible = false
+
+local fovSilent = Drawing.new("Circle")
+fovSilent.Thickness = 2; fovSilent.Color = Color3.fromRGB(255, 50, 50); fovSilent.Transparency = 0.65; fovSilent.Filled = false; fovSilent.Visible = false
+
+-- Criminology GUI
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.ResetOnSpawn = false
+ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+local MainFrame = Instance.new("Frame")
+MainFrame.Size = UDim2.new(0, 320, 0, 680)
+MainFrame.Position = UDim2.new(0.5, -160, 0.5, -340)
+MainFrame.BackgroundColor3 = Color3.fromRGB(13, 13, 23)
+MainFrame.Active = true
+MainFrame.Draggable = true
+MainFrame.Visible = false
+MainFrame.Parent = ScreenGui
+
+local TopBar = Instance.new("Frame")
+TopBar.Size = UDim2.new(1,0,0,55)
+TopBar.BackgroundColor3 = Color3.fromRGB(20,20,35)
+TopBar.Parent = MainFrame
+
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1,-60,1,0)
+Title.BackgroundTransparency = 1
+Title.Text = "CRIMINOLOGY | ARSENAL"
+Title.TextColor3 = Color3.fromRGB(100,200,255)
+Title.TextScaled = true
+Title.Font = Enum.Font.GothamBold
+Title.Parent = TopBar
+
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Size = UDim2.new(0,40,0,40)
+CloseBtn.Position = UDim2.new(1,-45,0.5,-20)
+CloseBtn.BackgroundColor3 = Color3.fromRGB(200,60,60)
+CloseBtn.Text = "✕"
+CloseBtn.TextColor3 = Color3.new(1,1,1)
+CloseBtn.TextScaled = true
+CloseBtn.Parent = TopBar
+
+local Content = Instance.new("ScrollingFrame")
+Content.Size = UDim2.new(1,-20,1,-75)
+Content.Position = UDim2.new(0,10,0,65)
+Content.BackgroundTransparency = 1
+Content.ScrollBarThickness = 6
+Content.CanvasSize = UDim2.new(0,0,0,920)
+Content.Parent = MainFrame
+
+local UIList = Instance.new("UIListLayout")
+UIList.SortOrder = Enum.SortOrder.LayoutOrder
+UIList.Padding = UDim.new(0,8)
+UIList.Parent = Content
+
+local function AddSection(text)
+    local s = Instance.new("TextLabel")
+    s.Size = UDim2.new(1,0,0,32)
+    s.BackgroundTransparency = 1
+    s.Text = "  "..text
+    s.TextColor3 = Color3.fromRGB(120,190,255)
+    s.TextScaled = true
+    s.Font = Enum.Font.GothamBold
+    s.TextXAlignment = Enum.TextXAlignment.Left
+    s.Parent = Content
+end
+
+local function AddToggle(name, default, callback)
+    local f = Instance.new("Frame")
+    f.Size = UDim2.new(1,0,0,48)
+    f.BackgroundColor3 = Color3.fromRGB(22,22,35)
+    f.Parent = Content
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(0.65,0,1,0)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = name
+    lbl.TextColor3 = Color3.new(1,1,1)
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.Font = Enum.Font.Gotham
+    lbl.TextScaled = true
+    lbl.Parent = f
+
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0,95,0,34)
+    btn.Position = UDim2.new(1,-110,0.5,-17)
+    btn.BackgroundColor3 = default and Color3.fromRGB(0,200,100) or Color3.fromRGB(200,50,50)
+    btn.Text = default and "ENABLED" or "DISABLED"
+    btn.TextColor3 = Color3.new(1,1,1)
+    btn.TextScaled = true
+    btn.Parent = f
+
+    local state = default
+    btn.MouseButton1Click:Connect(function()
+        state = not state
+        btn.BackgroundColor3 = state and Color3.fromRGB(0,200,100) or Color3.fromRGB(200,50,50)
+        btn.Text = state and "ENABLED" or "DISABLED"
+        callback(state)
+    end)
+end
+
+local function AddSlider(name, default, min, max, callback)
+    local f = Instance.new("Frame")
+    f.Size = UDim2.new(1,0,0,65)
+    f.BackgroundColor3 = Color3.fromRGB(22,22,35)
+    f.Parent = Content
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1,0,0,24)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = name .. ": " .. string.format("%.3f", default)
+    lbl.TextColor3 = Color3.new(1,1,1)
+    lbl.TextScaled = true
+    lbl.Font = Enum.Font.Gotham
+    lbl.Parent = f
+
+    local bar = Instance.new("TextButton")
+    bar.Size = UDim2.new(1,-20,0,20)
+    bar.Position = UDim2.new(0,10,0,35)
+    bar.BackgroundColor3 = Color3.fromRGB(40,40,60)
+    bar.Text = ""
+    bar.Parent = f
+
+    local fill = Instance.new("Frame")
+    fill.Size = UDim2.new((default-min)/(max-min),0,1,0)
+    fill.BackgroundColor3 = Color3.fromRGB(80,180,255)
+    fill.Parent = bar
+
+    local val = default
+    bar.MouseButton1Down:Connect(function()
+        local conn = RunService.RenderStepped:Connect(function()
+            local percent = math.clamp((game:GetService("UserInputService"):GetMouseLocation().X - bar.AbsolutePosition.X) / bar.AbsoluteSize.X, 0, 1)
+            val = min + (max - min) * percent
+            fill.Size = UDim2.new(percent, 0, 1, 0)
+            lbl.Text = name .. ": " .. string.format("%.3f", val)
+            callback(val)
+        end)
+        game:GetService("UserInputService").InputEnded:Connect(function(i)
+            if i.UserInputType == Enum.UserInputType.MouseButton1 then conn:Disconnect() end
+        end)
+    end)
+end
+
+-- GUI
+AddSection("AIMBOT")
+AddToggle("Silent Aim (PC)", false, function(v) silentAimEnabled = v end)
+AddToggle("Silent Aim (Mobile)", false, function(v) useMobileSilent = v end)
+AddToggle("Aimbot", false, function(v) aimbotEnabled = v end)   -- Combined
+
+AddSection("PREDICTION")
+AddToggle("Prediction for Silent Aim", true, function(v) usePredictionSilent = v end)
+AddToggle("Prediction for Aimbot", false, function(v) usePredictionAimbot = v end)
+
+AddSection("AIMBOT SETTINGS")
+AddSlider("Aimbot Strength", aimSmoothness, 0.05, 0.85, function(v) aimSmoothness = v end)
+
+AddSection("VISUALS")
+AddToggle("Drawing ESP", true, function(v) espEnabled = v end)
+AddToggle("Highlight ESP", false, function(v) highlightEnabled = v end)
+
+AddSection("SETTINGS")
+AddToggle("Wall Check", true, function(v) wallCheck = v end)
+AddToggle("Team Check", true, function(v) teamCheck = v end)
+
+AddSlider("Aim FOV", aimFOV, 200, 1500, function(v) aimFOV = v; fovAim.Radius = v end)
+AddSlider("Silent FOV", silentAimFOV, 200, 1500, function(v) silentAimFOV = v; fovSilent.Radius = v end)
+AddSlider("Prediction Multiplier", autoPredMultiplier, 0.0008, 0.003, function(v) autoPredMultiplier = v end)
+
+-- Open Button
+local OpenButton = Instance.new("TextButton")
+OpenButton.Size = UDim2.new(0,70,0,70)
+OpenButton.Position = UDim2.new(0,25,0.8,-110)
+OpenButton.BackgroundColor3 = Color3.fromRGB(25,90,230)
+OpenButton.Text = "⚙"
+OpenButton.TextScaled = true
+OpenButton.Font = Enum.Font.GothamBold
+OpenButton.Parent = ScreenGui
+
+OpenButton.MouseButton1Click:Connect(function() MainFrame.Visible = not MainFrame.Visible end)
+CloseBtn.MouseButton1Click:Connect(function() MainFrame.Visible = false end)
+
+-- Core Functions
+local function isEnemy(plr)
+    if not teamCheck then return true end
+    if not plr.Team or not LocalPlayer.Team then return true end
+    return plr.Team ~= LocalPlayer.Team
+end
+
+local function isVisible(part)
+    if not wallCheck then return true end
+    local params = RaycastParams.new()
+    params.FilterDescendantsInstances = {LocalPlayer.Character}
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    local res = workspace:Raycast(Camera.CFrame.Position, part.Position - Camera.CFrame.Position, params)
+    return res and res.Instance:IsDescendantOf(part.Parent)
+end
+
+local function getPrediction(part, root, forAimbot)
+    if (forAimbot and not usePredictionAimbot) or (not forAimbot and not usePredictionSilent) then
+        return 0
+    end
+    local dist = (Camera.CFrame.Position - part.Position).Magnitude
+    if autoPredictionEnabled and root then
+        return dist * autoPredMultiplier + (root.Velocity.Magnitude * 0.00008)
+    end
+    return 0
+end
+
+local function updateTargetCache()
+    local closest, minDist = nil, math.huge
+    local center = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+    local maxFov = math.max(aimFOV, silentAimFOV)
+
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer and plr.Character and isEnemy(plr) then
+            local char = plr.Character
+            local part = char:FindFirstChild("Head") or char:FindFirstChild("UpperTorso") or char:FindFirstChild("HumanoidRootPart")
+            local root = char:FindFirstChild("HumanoidRootPart")
+            if part and isVisible(part) then
+                local vp, onScreen = Camera:WorldToViewportPoint(part.Position)
+                if onScreen then
+                    local dist = (Vector2.new(vp.X, vp.Y) - center).Magnitude
+                    if dist < minDist and dist < maxFov then
+                        minDist = dist
+                        closest = {Part = part, Root = root}
+                    end
+                end
+            end
+        end
+    end
+    targetCache = closest
+end
+
+-- Silent Aim Hook
+local mt = getrawmetatable(game)
+local old = mt.__namecall
+setreadonly(mt, false)
+mt.__namecall = newcclosure(function(self, ...)
+    local args = {...}
+    if silentAimEnabled and not useMobileSilent and getnamecallmethod() == "FireServer" then
+        local n = self.Name:lower()
+        if n:find("bullet") or n:find("hit") or n:find("damage") then
+            if targetCache and targetCache.Part then
+                local pos = targetCache.Part.Position
+                local pred = getPrediction(targetCache.Part, targetCache.Root, false)
+                if targetCache.Root then pos += targetCache.Root.Velocity * pred end
+                if typeof(args[1]) == "Vector3" then args[1] = pos + Vector3.new(0,0.12,0) end
+            end
+        end
+    end
+    return old(self, unpack(args))
+end)
+setreadonly(mt, true)
+
+-- Main Loop
+RunService.RenderStepped:Connect(function()
+    -- Mobile Silent
+    if useMobileSilent and silentAimEnabled and targetCache then
+        local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildWhichIsA("Tool")
+        local muzzle = tool and (tool:FindFirstChild("Muzzle") or tool:FindFirstChild("Barrel"))
+        if muzzle then
+            local pos = targetCache.Part.Position
+            local pred = getPrediction(targetCache.Part, targetCache.Root, false)
+            if targetCache.Root then pos += targetCache.Root.Velocity * pred end
+            muzzle.CFrame = CFrame.lookAt(muzzle.Position, pos)
+        end
+    end
+
+    -- Aimbot
+    if aimbotEnabled and targetCache then
+        local pos = targetCache.Part.Position
+        local pred = getPrediction(targetCache.Part, targetCache.Root, true)
+        if targetCache.Root then pos += targetCache.Root.Velocity * pred end
+        
+        local targetCF = CFrame.lookAt(Camera.CFrame.Position, pos)
+        Camera.CFrame = Camera.CFrame:Lerp(targetCF, aimSmoothness)
+    end
+
+    local c = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+    fovAim.Position = c
+    fovSilent.Position = c
+    fovAim.Visible = aimbotEnabled
+    fovSilent.Visible = silentAimEnabled
+end)
+
+RunService.Heartbeat:Connect(updateTargetCache)
+
+print("✅ Arsenal Hub v5.4 Loaded | Aimbot Combined & Fixed")
